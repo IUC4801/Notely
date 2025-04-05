@@ -1,5 +1,7 @@
-export const appDirectoryName = 'Notely'
-export const fileEncoding = 'utf8'
+import { NoteContent, NoteInfo } from './models'
 
-export const autoSavingTime = 3000
-export const welcomeNoteFilename = 'Welcome.md'
+export type GetNotes = () => Promise<NoteInfo[]>
+
+export type ReadNote = (title: NoteInfo['title']) => Promise<NoteContent>
+
+export type WriteNote = (title: NoteInfo['title'], content: NoteContent) => Promise<void>

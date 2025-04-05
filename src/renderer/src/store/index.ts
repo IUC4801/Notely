@@ -1,26 +1,66 @@
-import { notesMock } from '@/store/mocks'
-import { NoteInfo } from '@shared/models'
+import { NoteContent, NoteInfo } from '@shared/models'
 import { atom } from 'jotai'
+import { unwrap } from 'jotai/utils'
 
-export const notesAtom = atom<NoteInfo[]>(notesMock)
+const loadNotes = async () => {
+  const notes = await window.context.getNotes()
+  //sort notes by lastEditTime
+  return notes.sort((a, b) => b.lastEditTime - a.lastEditTime)
+}
+
+const notesAtomAsync = atom<NoteInfo[] | Promise<NoteInfo[]>>(loadNotes())
+
+export const notesAtom = unwrap(notesAtomAsync, (prev) => prev)
 
 export const selectedNoteIndexAtom = atom<number | null>(null)
 
-export const selectedNoteAtom = atom((get) => {
+const selectedNoteAtomAsync = atom(async (get) => {
   const notes = get(notesAtom)
   const selectedNoteIndex = get(selectedNoteIndexAtom)
 
-  if (selectedNoteIndex == null) return null
+  if (selectedNoteIndex == null || !notes) return null
 
   const selectedNote = notes[selectedNoteIndex]
+  const noteContent = await window.context.readNote(selectedNote.title)
+
   return {
     ...selectedNote,
-    content: `Hello From Note${selectedNoteIndex}`
+    content: noteContent
   }
+})
+
+export const selectedNoteAtom = unwrap(
+  selectedNoteAtomAsync,
+  (prev) =>
+    prev ?? {
+      title: '',
+      content: '',
+      lastEditTime: Date.now()
+    }
+)
+
+export const saveNoteAtom = atom(null, async (get, set, newContent: NoteContent) => {
+  const notes = get(notesAtom)
+  const selectedNote = get(selectedNoteAtom)
+  if (selectedNote == null || !notes) return
+
+  await window.context.writeNote(selectedNote.title, newContent)
+
+  //update saved note in last edit time
+  set(
+    notesAtom,
+    notes.map((note) => {
+      if (note.title === selectedNote.title) {
+        return { ...note, lastEditTime: Date.now() }
+      }
+      return note
+    })
+  )
 })
 
 export const createEmptyNoteAtom = atom(null, (get, set) => {
   const notes = get(notesAtom)
+  if (!notes) return
   const title = `Note ${notes.length + 1}`
   const newNote: NoteInfo = {
     title,
@@ -34,7 +74,7 @@ export const createEmptyNoteAtom = atom(null, (get, set) => {
 export const deleteNoteAtom = atom(null, (get, set) => {
   const notes = get(notesAtom)
   const selectedNote = get(selectedNoteAtom)
-  if (selectedNote == null) return
+  if (selectedNote == null || !notes) return
   set(
     notesAtom,
     notes.filter((note) => note.title !== selectedNote.title)
